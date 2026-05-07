@@ -1,0 +1,7 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+mysql-connector-python==8.4.0
+redis==5.0.4
+thefuzz==0.22.1
+python-Levenshtein==0.25.1
+python-dotenv==1.0.1
