@@ -51,39 +51,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class ChatRequest(BaseModel):
-    message: str
-    session_id: str = None
 
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    session_id = req.session_id or str(uuid.uuid4())
-    
-    try:
-        token = get_dialogflow_token()
-        project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
-        url = (
-            f"https://dialogflow.googleapis.com/v2/projects/{project_id}"
-            f"/agent/sessions/{session_id}:detectIntent"
-        )
-        payload = {
-            "queryInput": {
-                "text": {"text": req.message, "languageCode": "en"}
-            }
-        }
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-        response.raise_for_status()
-        result = response.json()
-        reply = result["queryResult"]["fulfillmentText"]
-        return JSONResponse({"response": reply, "session_id": session_id})
-
-    except Exception as e:
-        logger.exception("Dialogflow call failed")
-        return JSONResponse({"response": "Sorry, something went wrong.", "session_id": session_id})
 
 # ------------------------------------------
 # 🔐 Dialogflow Auth
