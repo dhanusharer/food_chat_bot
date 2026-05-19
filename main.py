@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import time
 import uuid
 
@@ -77,12 +78,52 @@ class ChatRequest(BaseModel):
     session_id: str = None
 
 
+def _reply(text: str, session_id: str) -> JSONResponse:
+    return JSONResponse({"response": text, "session_id": session_id})
+
+
+def _local_chat_response(message: str, session_id: str) -> str:
+    text = message.strip().lower()
+
+    if not text:
+        return "Tell me what you'd like to eat, or ask to see the menu."
+
+    if any(word in text for word in ("hello", "hi", "hey")):
+        return "Hey there! I can show the menu, take your order, or track an order."
+
+    if "menu" in text:
+        return handle_show_menu()["fulfillmentText"]
+
+    if "track" in text:
+        match = re.search(r"\b\d+\b", text)
+        return handle_track_order({"order_id": match.group(0) if match else None})["fulfillmentText"]
+
+    if "cancel" in text:
+        match = re.search(r"\b\d+\b", text)
+        return handle_cancel_order({"order_id": match.group(0) if match else None})["fulfillmentText"]
+
+    if "cart" in text or "summary" in text:
+        return handle_cart_summary(session_id)["fulfillmentText"]
+
+    if "confirm" in text or "place order" in text or "complete order" in text:
+        return handle_order_complete(session_id)["fulfillmentText"]
+
+    if "order" in text:
+        return "Sure. Tell me the item and quantity, like '2 burgers and 1 pizza'."
+
+    return "I can help with the menu, orders, tracking, and cancellations. What would you like to do?"
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
     project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
 
     try:
+        if not project_id or not os.getenv("GOOGLE_CREDENTIALS_JSON"):
+            logger.warning("Dialogflow config missing; using local chat fallback")
+            return _reply(_local_chat_response(req.message, session_id), session_id)
+
         token = get_dialogflow_token()
         url = (
             f"https://dialogflow.googleapis.com/v2/projects/{project_id}"
@@ -101,11 +142,11 @@ async def chat(req: ChatRequest):
         response.raise_for_status()
         result = response.json()
         reply = result["queryResult"]["fulfillmentText"]
-        return JSONResponse({"response": reply, "session_id": session_id})
+        return _reply(reply, session_id)
 
-    except Exception as e:
-        logger.exception("Dialogflow call failed")
-        return JSONResponse({"response": "Sorry, something went wrong.", "session_id": session_id})
+    except Exception:
+        logger.exception("Dialogflow call failed; using local chat fallback")
+        return _reply(_local_chat_response(req.message, session_id), session_id)
 
 
 # ------------------------------------------
