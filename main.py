@@ -82,6 +82,29 @@ def _reply(text: str, session_id: str) -> JSONResponse:
     return JSONResponse({"response": text, "session_id": session_id})
 
 
+def _parse_order_items(text: str) -> tuple[list[str], list[int]]:
+    cleaned = re.sub(
+        r"\b(i\s+want|i\s+would\s+like|i\s+need|please\s+add|add|order|get|give\s+me)\b",
+        "",
+        text,
+    )
+    parts = re.split(r"\s+(?:and|with)\s+|,", cleaned)
+    food_items = []
+    quantities = []
+
+    for part in parts:
+        match = re.search(r"\b(\d+)\s+([a-z][a-z\s-]*)(?=\s*$)", part.strip())
+        if not match:
+            continue
+
+        item = match.group(2).strip(" .")
+        item = item.replace("biriyani", "biryani")
+        food_items.append(item)
+        quantities.append(int(match.group(1)))
+
+    return food_items, quantities
+
+
 def _local_chat_response(message: str, session_id: str) -> str:
     text = message.strip().lower()
 
@@ -107,6 +130,13 @@ def _local_chat_response(message: str, session_id: str) -> str:
 
     if "confirm" in text or "place order" in text or "complete order" in text:
         return handle_order_complete(session_id)["fulfillmentText"]
+
+    food_items, quantities = _parse_order_items(text)
+    if food_items:
+        return handle_order_add(
+            {"food_items": food_items, "number": quantities},
+            session_id,
+        )["fulfillmentText"]
 
     if "order" in text:
         return "Sure. Tell me the item and quantity, like '2 burgers and 1 pizza'."
