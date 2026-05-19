@@ -1,9 +1,2 @@
-.env
-__pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
-.ruff_cache/
-*.egg-info/
-dist/
-.DS_Store
+*.json
+dhanush-chat-bot-for-food-lhou-704d4a5eff0f.json
