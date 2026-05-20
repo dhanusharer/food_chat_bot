@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 _pool: pooling.MySQLConnectionPool | None = None
 
-
 def get_pool() -> pooling.MySQLConnectionPool:
     global _pool
     if _pool is None:
