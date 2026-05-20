@@ -30,3 +30,5 @@ INSERT INTO food_items (name, price) VALUES
     ('Chocolate Shake', 130.00),
     ('Veg Burger', 110.00)
 ON DUPLICATE KEY UPDATE name = name;
+ 
+ insert into orders (status) values ('pending');
