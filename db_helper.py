@@ -88,3 +88,7 @@ def get_order_summary(cursor, order_id: int) -> dict | None:
     )
     items = cursor.fetchall()
     return {"status": order["status"], "items": items}
+
+
+
+helper functions for database operations related to food orders, including fuzzy matching for item names.
