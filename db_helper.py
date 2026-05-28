@@ -91,4 +91,3 @@ def get_order_summary(cursor, order_id: int) -> dict | None:
 
 
 
-helper functions for database operations related to food orders, including fuzzy matching for item names.
