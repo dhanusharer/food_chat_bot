@@ -73,6 +73,7 @@ def _reply(text: str, session_id: str) -> JSONResponse:
 
 
 def _parse_order_items(text: str) -> tuple[list[str], list[int]]:
+    text = text.lower().strip()
     cleaned = re.sub(
         r"\b(i\s+want|i\s+would\s+like|i\s+need|please\s+add|add|order|get|give\s+me)\b",
         "",
@@ -81,19 +82,22 @@ def _parse_order_items(text: str) -> tuple[list[str], list[int]]:
     parts = re.split(r"\s+(?:and|with)\s+|,", cleaned)
     food_items = []
     quantities = []
-
     for part in parts:
-        match = re.search(r"\b(\d+)\s+([a-z][a-z\s-]*)(?=\s*$)", part.strip())
-        if not match:
+        part = part.strip().lower()
+        if not part:
             continue
-
-        item = match.group(2).strip(" .")
-        item = item.replace("biriyani", "biryani")
-        food_items.append(item)
-        quantities.append(int(match.group(1)))
-
+        # Try with quantity first: "2 burgers"
+        match = re.search(r"\b(\d+)\s+([a-z][a-z\s-]*)$", part)
+        if match:
+            food_items.append(match.group(2).strip(" ."))
+            quantities.append(int(match.group(1)))
+            continue
+        # Try without quantity: "naan", "ice cream" → default 1
+        match2 = re.search(r"^([a-z][a-z\s-]+)$", part)
+        if match2:
+            food_items.append(match2.group(1).strip(" ."))
+            quantities.append(1)
     return food_items, quantities
-
 
 def _local_chat_response(message: str, session_id: str) -> str:
     text = message.strip().lower()
