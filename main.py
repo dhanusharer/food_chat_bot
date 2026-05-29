@@ -161,7 +161,7 @@ async def chat(req: ChatRequest):
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         response.raise_for_status()
         result = response.json()
-        reply = result["queryResult"]["fulfillmentText"]
+        reply = result["queryResult"].get("fulfillmentText") or result["queryResult"].get("webhookPayload", {}).get("fulfillmentText", "Sorry, I didn't understand that.")
         return _reply(reply, session_id)
 
     except Exception:
