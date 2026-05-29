@@ -124,6 +124,12 @@ def _local_chat_response(message: str, session_id: str) -> str:
 
     if any(word in text for word in ("confirm", "place order", "complete order", "that's it", "that's all", "done", "finish", "checkout")):
         return handle_order_complete(session_id)["fulfillmentText"]
+    
+    if any(word in text for word in ("no", "nope", "nothing", "nevermind", "never mind", "nah")):
+        return "Okay! Let me know if you need anything else."
+
+    if text in ("i want to order", "i want to place an order", "new order", "order", "i want", "i would like to order"):
+        return "Sure! Tell me what you'd like. Example: '2 burgers and 1 pizza'"
 
     food_items, quantities = _parse_order_items(text)
     if food_items:
