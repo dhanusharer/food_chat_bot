@@ -137,40 +137,8 @@ def _local_chat_response(message: str, session_id: str) -> str:
 @app.post("/chat")
 async def chat(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
-    project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
-
-    try:
-        if not project_id or not os.getenv("GOOGLE_CREDENTIALS_JSON"):
-            logger.warning("Dialogflow config missing; using local chat fallback")
-            return _reply(_local_chat_response(req.message, session_id), session_id)
-
-        token = get_dialogflow_token()
-        url = (
-            f"https://dialogflow.googleapis.com/v2/projects/{project_id}"
-            f"/agent/sessions/{session_id}:detectIntent"
-        )
-        payload = {
-            "queryInput": {
-                "text": {"text": req.message, "languageCode": "en"}
-            }
-        }
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
-        response.raise_for_status()
-        result = response.json()
-        logger.info("Dialogflow result: %s", json.dumps(result))
-        reply = result.get("queryResult", {}).get("fulfillmentText", "")
-        if not reply:
-            reply = "Sorry, I didn't understand that."
-        return _reply(reply, session_id)
-
-    except Exception:
-        logger.exception("Dialogflow call failed; using local chat fallback")
-        return _reply(_local_chat_response(req.message, session_id), session_id)
-
+    reply = _local_chat_response(req.message, session_id)
+    return _reply(reply, session_id)
 # ------------------------------------------
 # ❤️ Health
 # ------------------------------------------
