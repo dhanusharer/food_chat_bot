@@ -118,7 +118,7 @@ def _local_chat_response(message: str, session_id: str) -> str:
     if "cart" in text or "summary" in text:
         return handle_cart_summary(session_id)["fulfillmentText"]
 
-    if "confirm" in text or "place order" in text or "complete order" in text:
+    if any(word in text for word in ("confirm", "place order", "complete order", "that's it", "that's all", "done", "finish", "checkout")):
         return handle_order_complete(session_id)["fulfillmentText"]
 
     food_items, quantities = _parse_order_items(text)
