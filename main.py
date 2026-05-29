@@ -161,13 +161,15 @@ async def chat(req: ChatRequest):
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         response.raise_for_status()
         result = response.json()
-        reply = result["queryResult"].get("fulfillmentText") or result["queryResult"].get("webhookPayload", {}).get("fulfillmentText", "Sorry, I didn't understand that.")
+        logger.info("Dialogflow result: %s", json.dumps(result))
+        reply = result.get("queryResult", {}).get("fulfillmentText", "")
+        if not reply:
+            reply = "Sorry, I didn't understand that."
         return _reply(reply, session_id)
 
     except Exception:
         logger.exception("Dialogflow call failed; using local chat fallback")
         return _reply(_local_chat_response(req.message, session_id), session_id)
-
 
 # ------------------------------------------
 # ❤️ Health
