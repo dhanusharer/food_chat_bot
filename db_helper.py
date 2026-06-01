@@ -30,6 +30,21 @@ def get_connection() -> mysql.connector.MySQLConnection:
     return get_pool().get_connection()
 
 
+def get_food_item_names() -> list[str]:
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        cursor.execute("SELECT name FROM food_items")
+        return [row["name"] for row in cursor.fetchall()]
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 def create_new_order(cursor) -> int:
     cursor.execute("INSERT INTO orders (status) VALUES ('pending')")
     return cursor.lastrowid
@@ -88,6 +103,5 @@ def get_order_summary(cursor, order_id: int) -> dict | None:
     )
     items = cursor.fetchall()
     return {"status": order["status"], "items": items}
-
 
 

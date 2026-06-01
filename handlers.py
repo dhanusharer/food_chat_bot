@@ -21,12 +21,29 @@ def _fulfillment(text: str) -> dict:
     return {"fulfillmentText": text}
 
 
+def _as_list(value) -> list:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _first_value(value):
+    values = _as_list(value)
+    return values[0] if values else None
+
+
+def _food_items(parameters: dict) -> list[str]:
+    return [item.strip() for item in map(str, _as_list(parameters.get("food_items"))) if item.strip()]
+
+
 # ------------------------------------------
 # 🛒 ADD TO CART
 # ------------------------------------------
 def handle_order_add(parameters: dict, session_id: str) -> dict:
-    food_items: list = parameters.get("food_items", [])
-    quantities: list = parameters.get("number", [])
+    food_items = _food_items(parameters)
+    quantities = _as_list(parameters.get("number"))
 
     if not food_items:
         return _fulfillment("What would you like to add?")
@@ -38,8 +55,11 @@ def handle_order_add(parameters: dict, session_id: str) -> dict:
     added = []
 
     for item, qty in zip(food_items, quantities):
-        item = item.strip().lower()
-        qty = float(qty)
+        item = str(item).strip().lower()
+        try:
+            qty = float(qty)
+        except (TypeError, ValueError):
+            return _fulfillment(f"Quantity for {item} must be a number.")
 
         if qty <= 0 or qty > MAX_QTY:
             return _fulfillment(f"Quantity for {item} must be between 1 and {MAX_QTY}.")
@@ -57,7 +77,7 @@ def handle_order_add(parameters: dict, session_id: str) -> dict:
 # ❌ REMOVE FROM CART
 # ------------------------------------------
 def handle_order_remove(parameters: dict, session_id: str) -> dict:
-    food_items: list = parameters.get("food_items", [])
+    food_items = _food_items(parameters)
 
     if not food_items:
         return _fulfillment("What would you like to remove?")
@@ -67,7 +87,7 @@ def handle_order_remove(parameters: dict, session_id: str) -> dict:
     not_found = []
 
     for item in food_items:
-        item = item.strip().lower()
+        item = str(item).strip().lower()
         if item in cart:
             del cart[item]
             removed.append(item)
@@ -107,12 +127,13 @@ def handle_order_complete(session_id: str) -> dict:
     if not cart:
         return _fulfillment("Your cart is empty. Add some items first!")
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
-
-        order_id = create_new_order(cursor)
         skipped = []
+        resolved_items = []
 
         for item, qty in cart.items():
             food_id = get_food_item_id_fuzzy(cursor, item)
@@ -122,11 +143,18 @@ def handle_order_complete(session_id: str) -> dict:
                 skipped.append(item)
                 continue
 
-            insert_order_item(cursor, order_id, food_id, int(qty))
+            resolved_items.append((food_id, int(qty)))
+
+        if not resolved_items:
+            return _fulfillment(
+                "I couldn't match anything in your cart to the menu. Please check the menu and try again."
+            )
+
+        order_id = create_new_order(cursor)
+        for food_id, qty in resolved_items:
+            insert_order_item(cursor, order_id, food_id, qty)
 
         conn.commit()
-        cursor.close()
-        conn.close()
 
         clear_cart(session_id)
 
@@ -140,13 +168,18 @@ def handle_order_complete(session_id: str) -> dict:
     except Exception:
         logger.exception("Failed to complete order for session %s", session_id)
         return _fulfillment("Something went wrong placing your order. Please try again.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 # ------------------------------------------
 # 📦 TRACK ORDER
 # ------------------------------------------
 def handle_track_order(parameters: dict) -> dict:
-    order_id = parameters.get("order_id")
+    order_id = _first_value(parameters.get("order_id"))
 
     if not order_id:
         return _fulfillment("Please provide your order ID.")
@@ -156,15 +189,20 @@ def handle_track_order(parameters: dict) -> dict:
     except (ValueError, TypeError):
         return _fulfillment("That doesn't look like a valid order ID.")
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
         summary = get_order_summary(cursor, order_id)
-        cursor.close()
-        conn.close()
     except Exception:
         logger.exception("Failed to fetch order %s", order_id)
         return _fulfillment("Couldn't fetch your order right now. Try again shortly.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     if not summary:
         return _fulfillment(f"Order #{order_id} not found.")
@@ -184,13 +222,13 @@ def handle_track_order(parameters: dict) -> dict:
 # 🍽️ SHOW MENU
 # ------------------------------------------
 def handle_show_menu() -> dict:
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
         cursor.execute("SELECT name, price FROM food_items ORDER BY name")
         items = cursor.fetchall()
-        cursor.close()
-        conn.close()
 
         if not items:
             return _fulfillment("Menu is not available right now.")
@@ -201,13 +239,18 @@ def handle_show_menu() -> dict:
     except Exception:
         logger.exception("Failed to fetch menu")
         return _fulfillment("Couldn't load the menu right now. Try again shortly.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 # ------------------------------------------
 # 🚫 CANCEL ORDER
 # ------------------------------------------
 def handle_cancel_order(parameters: dict) -> dict:
-    order_id = parameters.get("order_id")
+    order_id = _first_value(parameters.get("order_id"))
 
     if not order_id:
         return _fulfillment("Which order ID would you like to cancel?")
@@ -217,6 +260,8 @@ def handle_cancel_order(parameters: dict) -> dict:
     except (ValueError, TypeError):
         return _fulfillment("That doesn't look like a valid order ID.")
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
@@ -225,13 +270,9 @@ def handle_cancel_order(parameters: dict) -> dict:
         order = cursor.fetchone()
 
         if not order:
-            cursor.close()
-            conn.close()
             return _fulfillment(f"Order #{order_id} not found.")
 
         if order["status"] != "pending":
-            cursor.close()
-            conn.close()
             return _fulfillment(
                 f"Order #{order_id} is already {order['status']} and cannot be cancelled."
             )
@@ -240,8 +281,6 @@ def handle_cancel_order(parameters: dict) -> dict:
             "UPDATE orders SET status = 'cancelled' WHERE id = %s", (order_id,)
         )
         conn.commit()
-        cursor.close()
-        conn.close()
 
         logger.info("Order #%s cancelled", order_id)
         return _fulfillment(f"❌ Order #{order_id} has been cancelled successfully.")
@@ -249,6 +288,9 @@ def handle_cancel_order(parameters: dict) -> dict:
     except Exception:
         logger.exception("Failed to cancel order %s", order_id)
         return _fulfillment("Something went wrong. Please try again.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
     
-
-

@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS food_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
+    name VARCHAR(100) NOT NULL UNIQUE,
     price DECIMAL(10, 2) NOT NULL
 );
 
@@ -30,5 +30,3 @@ INSERT INTO food_items (name, price) VALUES
     ('Chocolate Shake', 130.00),
     ('Veg Burger', 110.00)
 ON DUPLICATE KEY UPDATE name = name;
- 
- 
