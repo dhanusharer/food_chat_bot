@@ -147,11 +147,71 @@ def _local_chat_response(message: str, session_id: str) -> str:
 @app.post("/chat")
 async def chat(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
-    reply = _local_chat_response(req.message, session_id)
-    return _reply(reply, session_id)
-# ------------------------------------------
-# ❤️ Health
-# ------------------------------------------
+
+    try:
+        token = get_dialogflow_token()
+        project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
+        url = (
+            f"https://dialogflow.googleapis.com/v2/projects/{project_id}"
+            f"/agent/sessions/{session_id}:detectIntent"
+        )
+        payload = {
+            "queryInput": {
+                "text": {"text": req.message, "languageCode": "en"}
+            },
+            "queryParams": {
+                "timeZone": "Asia/Kolkata"
+            }
+        }
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+
+        query_result = result.get("queryResult", {})
+        intent_name = query_result.get("intent", {}).get("displayName", "").strip().lower()
+        parameters = query_result.get("parameters", {})
+
+        logger.info("Chat intent: %s | session: %s", intent_name, session_id)
+
+        # Route to handlers based on intent
+        if intent_name == "order_add":
+            reply = handle_order_add(parameters, session_id)["fulfillmentText"]
+
+        elif "order.remove" in intent_name:
+            reply = handle_order_remove(parameters, session_id)["fulfillmentText"]
+
+        elif intent_name == "cart.summary":
+            reply = handle_cart_summary(session_id)["fulfillmentText"]
+
+        elif intent_name.startswith("order.complete"):
+            reply = handle_order_complete(session_id)["fulfillmentText"]
+
+        elif intent_name.startswith("track.order") or intent_name == "track order":
+            reply = handle_track_order(parameters)["fulfillmentText"]
+
+        elif intent_name in ("show.menu", "menu"):
+            reply = handle_show_menu()["fulfillmentText"]
+
+        elif intent_name == "order.cancel":
+            reply = handle_cancel_order(parameters)["fulfillmentText"]
+
+        elif intent_name in ("new order", "default welcome intent"):
+            reply = query_result.get("fulfillmentText", "Welcome! Say 'show menu' to get started.")
+
+        else:
+            # Use Dialogflow's response for anything else
+            reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
+
+        return _reply(reply, session_id)
+
+    except Exception:
+        logger.exception("Dialogflow call failed; using local fallback")
+        return _reply(_local_chat_response(req.message, session_id), session_id)
+    
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "1.0.0"}
