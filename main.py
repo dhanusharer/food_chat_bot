@@ -16,6 +16,7 @@ from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import service_account
 from pydantic import BaseModel
 
+from db_helper import get_food_item_names
 from handlers import (
     handle_cancel_order,
     handle_cart_summary,
@@ -35,6 +36,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="FoodieBot Webhook", version="1.0.0")
+ORDER_HINTS = (
+    "add",
+    "order",
+    "get",
+    "give me",
+    "i want",
+    "i would like",
+    "i need",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -72,8 +82,34 @@ def _reply(text: str, session_id: str) -> JSONResponse:
     return JSONResponse({"response": text, "session_id": session_id})
 
 
+def _known_food_terms() -> set[str]:
+    try:
+        names = get_food_item_names()
+    except Exception:
+        logger.exception("Could not load menu terms for local fallback")
+        return set()
+
+    terms = set()
+    for name in names:
+        normalized = name.lower().strip()
+        if normalized:
+            terms.add(normalized)
+        terms.update(part for part in re.findall(r"[a-z]+", normalized) if len(part) > 2)
+    return terms
+
+
+def _contains_known_food(text: str) -> bool:
+    return any(re.search(rf"\b{re.escape(term)}\b", text) for term in _known_food_terms())
+
+
 def _parse_order_items(text: str) -> tuple[list[str], list[int]]:
     text = text.lower().strip()
+    looks_like_order = any(
+        re.search(rf"\b{re.escape(hint)}\b", text) for hint in ORDER_HINTS
+    ) or bool(re.search(r"\b\d+\b", text))
+    if not looks_like_order and not _contains_known_food(text):
+        return [], []
+
     cleaned = re.sub(
         r"\b(i\s+want|i\s+would\s+like|i\s+need|please\s+add|add|order|get|give\s+me)\b",
         "",
@@ -105,7 +141,7 @@ def _local_chat_response(message: str, session_id: str) -> str:
     if not text:
         return "Tell me what you'd like to eat, or ask to see the menu."
 
-    if any(word in text for word in ("hello", "hi", "hey")):
+    if any(re.search(rf"\b{word}\b", text) for word in ("hello", "hi", "hey")):
         return "Hey there! I can show the menu, take your order, or track an order."
 
     if "menu" in text:
@@ -170,47 +206,46 @@ async def chat(req: ChatRequest):
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         response.raise_for_status()
         result = response.json()
-
-        query_result = result.get("queryResult", {})
-        intent_name = query_result.get("intent", {}).get("displayName", "").strip().lower()
-        parameters = query_result.get("parameters", {})
-
-        logger.info("Chat intent: %s | session: %s", intent_name, session_id)
-
-        # Route to handlers based on intent
-        if intent_name == "order_add":
-            reply = handle_order_add(parameters, session_id)["fulfillmentText"]
-
-        elif "order.remove" in intent_name:
-            reply = handle_order_remove(parameters, session_id)["fulfillmentText"]
-
-        elif intent_name == "cart.summary":
-            reply = handle_cart_summary(session_id)["fulfillmentText"]
-
-        elif intent_name.startswith("order.complete"):
-            reply = handle_order_complete(session_id)["fulfillmentText"]
-
-        elif intent_name.startswith("track.order") or intent_name == "track order":
-            reply = handle_track_order(parameters)["fulfillmentText"]
-
-        elif intent_name in ("show.menu", "menu"):
-            reply = handle_show_menu()["fulfillmentText"]
-
-        elif intent_name == "order.cancel":
-            reply = handle_cancel_order(parameters)["fulfillmentText"]
-
-        elif intent_name in ("new order", "default welcome intent"):
-            reply = query_result.get("fulfillmentText", "Welcome! Say 'show menu' to get started.")
-
-        else:
-            # Use Dialogflow's response for anything else
-            reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
-
-        return _reply(reply, session_id)
-
     except Exception:
         logger.exception("Dialogflow call failed; using local fallback")
         return _reply(_local_chat_response(req.message, session_id), session_id)
+
+    query_result = result.get("queryResult", {})
+    intent_name = query_result.get("intent", {}).get("displayName", "").strip().lower()
+    parameters = query_result.get("parameters", {})
+
+    logger.info("Chat intent: %s | session: %s", intent_name, session_id)
+
+    # Route to handlers based on intent
+    if intent_name == "order_add":
+        reply = handle_order_add(parameters, session_id)["fulfillmentText"]
+
+    elif "order.remove" in intent_name:
+        reply = handle_order_remove(parameters, session_id)["fulfillmentText"]
+
+    elif intent_name == "cart.summary":
+        reply = handle_cart_summary(session_id)["fulfillmentText"]
+
+    elif intent_name.startswith("order.complete"):
+        reply = handle_order_complete(session_id)["fulfillmentText"]
+
+    elif intent_name.startswith("track.order") or intent_name == "track order":
+        reply = handle_track_order(parameters)["fulfillmentText"]
+
+    elif intent_name in ("show.menu", "menu"):
+        reply = handle_show_menu()["fulfillmentText"]
+
+    elif intent_name == "order.cancel":
+        reply = handle_cancel_order(parameters)["fulfillmentText"]
+
+    elif intent_name in ("new order", "default welcome intent"):
+        reply = query_result.get("fulfillmentText", "Welcome! Say 'show menu' to get started.")
+
+    else:
+        # Use Dialogflow's response for anything else
+        reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
+
+    return _reply(reply, session_id)
     
 @app.get("/health")
 async def health_check():
