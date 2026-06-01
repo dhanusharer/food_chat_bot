@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import "./App.css";
 
 const BOT_NAME = "FoodieBot";
-const API_URL = "https://foodchatbot-production.up.railway.app";  // empty = use Vite proxy to localhost:8000
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 const QUICK_REPLIES = [
   "Show menu 🍽️",
