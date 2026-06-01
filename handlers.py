@@ -48,6 +48,9 @@ def handle_order_add(parameters: dict, session_id: str) -> dict:
     if not food_items:
         return _fulfillment("What would you like to add?")
 
+    if not quantities:
+        quantities = [1] * len(food_items)
+
     if len(food_items) != len(quantities):
         return _fulfillment("I didn't catch the quantities. Could you repeat that?")
 

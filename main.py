@@ -102,6 +102,13 @@ def _contains_known_food(text: str) -> bool:
     return any(re.search(rf"\b{re.escape(term)}\b", text) for term in _known_food_terms())
 
 
+def _is_dialogflow_fallback(intent_name: str) -> bool:
+    return "fallback" in intent_name or intent_name in {
+        "",
+        "default fallback intent",
+    }
+
+
 def _parse_order_items(text: str) -> tuple[list[str], list[int]]:
     text = text.lower().strip()
     looks_like_order = any(
@@ -240,6 +247,9 @@ async def chat(req: ChatRequest):
 
     elif intent_name in ("new order", "default welcome intent"):
         reply = query_result.get("fulfillmentText", "Welcome! Say 'show menu' to get started.")
+
+    elif _is_dialogflow_fallback(intent_name):
+        reply = _local_chat_response(req.message, session_id)
 
     else:
         # Use Dialogflow's response for anything else
