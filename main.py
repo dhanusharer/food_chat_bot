@@ -26,6 +26,7 @@ from handlers import (
     handle_show_menu,
     handle_track_order,
 )
+from session_manager import get_or_create_cart
 
 load_dotenv()
 
@@ -252,8 +253,12 @@ async def chat(req: ChatRequest):
         reply = _local_chat_response(req.message, session_id)
 
     else:
-        # Use Dialogflow's response for anything else
-        reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
+        # If cart has items and fallback triggered, try to complete order
+        cart = get_or_create_cart(session_id)
+        if cart and intent_name == "default fallback intent":
+           reply = handle_order_complete(session_id)["fulfillmentText"]
+        else:
+           reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
 
     return _reply(reply, session_id)
     
