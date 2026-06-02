@@ -253,12 +253,12 @@ async def chat(req: ChatRequest):
         reply = _local_chat_response(req.message, session_id)
 
     else:
-        # If cart has items and fallback triggered, try to complete order
+        
         cart = get_or_create_cart(session_id)
         if cart and intent_name == "default fallback intent":
            reply = handle_order_complete(session_id)["fulfillmentText"]
         else:
-           reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
+          reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
 
     return _reply(reply, session_id)
     
