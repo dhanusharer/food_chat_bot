@@ -15,7 +15,7 @@
 
 <br/>
 
-![FoodieBot Demo](https://via.placeholder.com/900x450/0d0d0d/f97316?text=FoodieBot+Dark+Mode+Chat+UI)
+![FoodieBot Architecture](architecture.png)
 
 </div>
 
