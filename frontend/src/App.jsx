@@ -55,31 +55,54 @@ function getEmojiForFood(name) {
   return "🍽️";
 }
 
-function RichPayload({ payload, onAction }) {
+function RichPayload({ payload, cart = {}, onAction }) {
   if (!payload || !payload.type) return null;
 
   switch (payload.type) {
     case "menu":
       return (
         <div className="menu-grid">
-          {payload.items && payload.items.map((item, idx) => (
-            <div key={idx} className="menu-card">
-              <div className="menu-card-emoji" aria-hidden="true">
-                {getEmojiForFood(item.name)}
+          {payload.items && payload.items.map((item, idx) => {
+            const qty = cart[item.name.toLowerCase()] || 0;
+            return (
+              <div key={idx} className="menu-card">
+                <div className="menu-card-emoji" aria-hidden="true">
+                  {getEmojiForFood(item.name)}
+                </div>
+                <div className="menu-card-info">
+                  <h3>{item.name.replace(/\b\w/g, c => c.toUpperCase())}</h3>
+                  <span className="price">₹{item.price.toFixed(2)}</span>
+                </div>
+                {qty > 0 ? (
+                  <div className="qty-selector">
+                    <button 
+                      type="button" 
+                      className="qty-btn qty-minus" 
+                      onClick={() => onAction(`remove 1 ${item.name}`)}
+                    >
+                      −
+                    </button>
+                    <span className="qty-val">{qty}</span>
+                    <button 
+                      type="button" 
+                      className="qty-btn qty-plus" 
+                      onClick={() => onAction(`1 ${item.name}`)}
+                    >
+                      ＋
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    type="button" 
+                    className="add-btn" 
+                    onClick={() => onAction(`1 ${item.name}`)}
+                  >
+                    ＋ Add
+                  </button>
+                )}
               </div>
-              <div className="menu-card-info">
-                <h3>{item.name.replace(/\b\w/g, c => c.toUpperCase())}</h3>
-                <span className="price">₹{item.price.toFixed(2)}</span>
-              </div>
-              <button 
-                type="button" 
-                className="add-btn" 
-                onClick={() => onAction(`1 ${item.name}`)}
-              >
-                ＋ Add
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       );
 
@@ -183,7 +206,7 @@ function RichPayload({ payload, onAction }) {
   }
 }
 
-function Message({ msg, onAction }) {
+function Message({ msg, cart, onAction }) {
   const isBot = msg.role === "bot";
 
   return (
@@ -192,7 +215,7 @@ function Message({ msg, onAction }) {
       <div className="message-body">
         <p>{formatMessage(msg.text)}</p>
         {isBot && msg.payload && (
-          <RichPayload payload={msg.payload} onAction={onAction} />
+          <RichPayload payload={msg.payload} cart={cart} onAction={onAction} />
         )}
         <time>{msg.time}</time>
       </div>
@@ -222,12 +245,35 @@ export default function App() {
       time: now(),
     },
   ]);
+  const [cart, setCart] = useState({});
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => crypto.randomUUID());
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const shortSession = useMemo(() => sessionId.slice(0, 8), [sessionId]);
+
+  function updateCartState(payload) {
+    if (!payload || !payload.type) return;
+    if (payload.type === "cart") {
+      const newCart = {};
+      (payload.items || []).forEach((item) => {
+        newCart[item.name.toLowerCase()] = item.quantity;
+      });
+      setCart(newCart);
+    } else if (payload.type === "cart_update") {
+      const newCart = {};
+      const cartData = payload.cart;
+      if (cartData && cartData.items) {
+        cartData.items.forEach((item) => {
+          newCart[item.name.toLowerCase()] = item.quantity;
+        });
+      }
+      setCart(newCart);
+    } else if (payload.type === "receipt") {
+      setCart({});
+    }
+  }
 
   useEffect(() => {
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -307,6 +353,7 @@ export default function App() {
           time: now(),
         },
       ]);
+      updateCartState(data.payload);
     } catch {
       setMessages((current) => [
         ...current,
@@ -392,7 +439,7 @@ export default function App() {
 
           <div className="conversation">
             {messages.map((message) => (
-              <Message key={message.id} msg={message} onAction={sendMessage} />
+              <Message key={message.id} msg={message} cart={cart} onAction={sendMessage} />
             ))}
             {loading && <TypingIndicator />}
             <div ref={bottomRef} />

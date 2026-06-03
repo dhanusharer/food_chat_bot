@@ -184,6 +184,30 @@ def _parse_order_items(text: str) -> tuple[list[str], list[int]]:
             quantities.append(1)
     return food_items, quantities
 
+def _parse_remove_items(text: str) -> tuple[list[str], list[int]]:
+    text = text.lower().strip()
+    cleaned = re.sub(r"\b(remove|delete|subtract|take\s+away|minus)\b", "", text)
+    parts = re.split(r"\s+(?:and|with)\s+|,", cleaned)
+    food_items = []
+    quantities = []
+    for part in parts:
+        part = part.strip().lower()
+        if not part:
+            continue
+        # Try matching quantity first: e.g. "1 pizza"
+        match = re.search(r"\b(\d+)\s+([a-z][a-z\s-]*)$", part)
+        if match:
+            food_items.append(match.group(2).strip(" ."))
+            quantities.append(int(match.group(1)))
+        else:
+            # No quantity: e.g. "pizza" or "all pizza"
+            cleaned_part = re.sub(r"\b(all)\b", "", part).strip(" .")
+            if cleaned_part:
+                food_items.append(cleaned_part)
+                quantities.append(0)  # 0 means remove completely
+    return food_items, quantities
+
+
 def _local_chat_response(message: str, session_id: str) -> dict:
     text = message.strip().lower()
 
@@ -206,6 +230,14 @@ def _local_chat_response(message: str, session_id: str) -> dict:
 
     if "cart" in text or "summary" in text:
         return handle_cart_summary(session_id)
+
+    if any(word in text for word in ("remove", "delete", "subtract", "take away", "minus")):
+        food_items, quantities = _parse_remove_items(text)
+        if food_items:
+            return handle_order_remove(
+                {"food_items": food_items, "number": quantities},
+                session_id,
+            )
 
     if any(word in text for word in ("confirm", "place order", "complete order", "that's it", "that's all", "done", "finish", "checkout")):
         return handle_order_complete(session_id)

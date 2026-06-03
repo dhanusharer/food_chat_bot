@@ -649,6 +649,51 @@ button {
   background: var(--coral);
 }
 
+.qty-selector {
+  margin-top: 10px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  height: 28px;
+}
+
+.qty-btn {
+  background: none;
+  border: none;
+  width: 32px;
+  height: 100%;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--navy);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.qty-btn:hover {
+  background-color: var(--line);
+}
+
+.qty-btn:active {
+  background-color: rgba(31, 42, 68, 0.15);
+}
+
+.qty-val {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--navy);
+  user-select: none;
+  flex-grow: 1;
+  text-align: center;
+}
+
 /* Cart Summary Card */
 .cart-card {
   margin-top: 10px;

@@ -66,6 +66,7 @@ def handle_order_add(parameters: dict, session_id: str) -> dict:
 # ------------------------------------------
 def handle_order_remove(parameters: dict, session_id: str) -> dict:
     food_items: list = parameters.get("food_items", [])
+    quantities: list = parameters.get("number", [])
 
     if not food_items:
         return _fulfillment("What would you like to remove?")
@@ -74,11 +75,20 @@ def handle_order_remove(parameters: dict, session_id: str) -> dict:
     removed = []
     not_found = []
 
-    for item in food_items:
+    for idx, item in enumerate(food_items):
         item = item.strip().lower()
         if item in cart:
-            del cart[item]
-            removed.append(item)
+            qty_to_remove = int(float(quantities[idx])) if (quantities and idx < len(quantities)) else 0
+            if qty_to_remove > 0:
+                cart[item] -= qty_to_remove
+                if cart[item] <= 0:
+                    del cart[item]
+                    removed.append(item)
+                else:
+                    removed.append(f"{qty_to_remove}x {item}")
+            else:
+                del cart[item]
+                removed.append(item)
         else:
             not_found.append(item)
 
