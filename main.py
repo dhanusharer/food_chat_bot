@@ -285,12 +285,12 @@ async def payment_callback(
             # Extract order_id from reference
             order_id = razorpay_payment_link_reference_id
 
-            # Update order status in DB
+            # Update order status and payment details in DB
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE orders SET status = 'paid' WHERE id = %s",
-                (order_id,)
+                "UPDATE orders SET status = 'paid', payment_id = %s, payment_link_id = %s WHERE id = %s",
+                (razorpay_payment_id, razorpay_payment_link_id, order_id)
             )
             conn.commit()
             cursor.close()
