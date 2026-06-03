@@ -41,7 +41,149 @@ function formatMessage(text) {
   });
 }
 
-function Message({ msg }) {
+function getEmojiForFood(name) {
+  const n = name.toLowerCase();
+  if (n.includes("pizza")) return "🍕";
+  if (n.includes("coffee")) return "☕";
+  if (n.includes("fries") || n.includes("french")) return "🍟";
+  if (n.includes("burger")) return "🍔";
+  if (n.includes("biryani") || n.includes("rice")) return "🍛";
+  if (n.includes("dosa")) return "🥞";
+  if (n.includes("shake") || n.includes("chocolate")) return "🥤";
+  if (n.includes("wrap")) return "🌯";
+  if (n.includes("pasta")) return "🍝";
+  return "🍽️";
+}
+
+function RichPayload({ payload, onAction }) {
+  if (!payload || !payload.type) return null;
+
+  switch (payload.type) {
+    case "menu":
+      return (
+        <div className="menu-grid">
+          {payload.items && payload.items.map((item, idx) => (
+            <div key={idx} className="menu-card">
+              <div className="menu-card-emoji" aria-hidden="true">
+                {getEmojiForFood(item.name)}
+              </div>
+              <div className="menu-card-info">
+                <h3>{item.name.replace(/\b\w/g, c => c.toUpperCase())}</h3>
+                <span className="price">₹{item.price.toFixed(2)}</span>
+              </div>
+              <button 
+                type="button" 
+                className="add-btn" 
+                onClick={() => onAction(`1 ${item.name}`)}
+              >
+                ＋ Add
+              </button>
+            </div>
+          ))}
+        </div>
+      );
+
+    case "cart":
+    case "cart_update": {
+      const cart = payload.type === "cart_update" ? payload.cart : payload;
+      if (!cart || !cart.items || cart.items.length === 0) {
+        return <div className="cart-card">Your cart is empty.</div>;
+      }
+      return (
+        <div className="cart-card">
+          {cart.items.map((item, idx) => (
+            <div key={idx} className="cart-item-row">
+              <div className="cart-item-info">
+                <strong>{item.name.replace(/\b\w/g, c => c.toUpperCase())}</strong>
+                <span>Qty: {item.quantity} × ₹{item.price.toFixed(2)}</span>
+              </div>
+              <button 
+                type="button" 
+                className="remove-btn" 
+                onClick={() => onAction(`remove ${item.name}`)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <div className="cart-total-row">
+            <span>Total:</span>
+            <strong>₹{cart.total.toFixed(2)}</strong>
+          </div>
+          <div className="cart-actions">
+            <button 
+              type="button" 
+              className="checkout-btn" 
+              onClick={() => onAction("confirm order")}
+            >
+              🚀 Confirm Order
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    case "receipt":
+      return (
+        <div className="receipt-card">
+          <div className="receipt-header">
+            <h4>INVOICE: Order #{payload.order_id}</h4>
+            <div className="receipt-status pending">PENDING PAYMENT</div>
+          </div>
+          <div className="receipt-row">
+            <span>Total Amount:</span>
+            <strong>₹{payload.total.toFixed(2)}</strong>
+          </div>
+          <a 
+            href={payload.payment_url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="pay-now-btn"
+          >
+            💳 Pay ₹{payload.total.toFixed(2)}
+          </a>
+        </div>
+      );
+
+    case "track": {
+      const steps = [
+        { label: "Placed", key: "pending" },
+        { label: "Paid", key: "paid" },
+        { label: "Preparing", key: "preparing" },
+        { label: "Delivered", key: "delivered" }
+      ];
+      const currentStatus = payload.status ? payload.status.toLowerCase() : "pending";
+      
+      // Determine active index
+      let activeIndex = 0;
+      if (currentStatus === "paid") activeIndex = 1;
+      else if (currentStatus === "preparing") activeIndex = 2;
+      else if (currentStatus === "delivered" || currentStatus === "completed") activeIndex = 3;
+
+      return (
+        <div className="track-card">
+          <div className="receipt-header">
+            <h4>TRACKING: Order #{payload.order_id}</h4>
+            <div className={`receipt-status ${currentStatus}`}>{currentStatus.toUpperCase()}</div>
+          </div>
+          <div className="stepper">
+            {steps.map((step, idx) => (
+              <div key={idx} className={`step ${idx <= activeIndex ? "active" : ""}`}>
+                <div className="step-dot" />
+                <span className="step-label">{step.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    default:
+      return null;
+  }
+}
+
+function Message({ msg, onAction }) {
   const isBot = msg.role === "bot";
 
   return (
@@ -49,6 +191,9 @@ function Message({ msg }) {
       {isBot && <div className="message-avatar" aria-hidden="true">🤖</div>}
       <div className="message-body">
         <p>{formatMessage(msg.text)}</p>
+        {isBot && msg.payload && (
+          <RichPayload payload={msg.payload} onAction={onAction} />
+        )}
         <time>{msg.time}</time>
       </div>
     </article>
@@ -85,6 +230,47 @@ export default function App() {
   const shortSession = useMemo(() => sessionId.slice(0, 8), [sessionId]);
 
   useEffect(() => {
+    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    // Fallback URL: check if API_URL has custom origin or default to localhost
+    let wsHost = API_URL ? API_URL.replace(/^https?:\/\//, "") : "127.0.0.1:8000";
+    const wsUrl = `${wsProto}//${wsHost}/ws/${sessionId}`;
+
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      console.log("WebSocket connection established for session:", sessionId);
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "order_status") {
+          setMessages((current) => [
+            ...current,
+            {
+              id: crypto.randomUUID(),
+              role: "bot",
+              text: `🎉 Payment confirmed for Order #${data.order_id}! We have started preparing your meal.`,
+              payload: {
+                type: "track",
+                order_id: data.order_id,
+                status: "paid"
+              },
+              time: now(),
+            },
+          ]);
+        }
+      } catch (err) {
+        console.error("Error parsing WebSocket message:", err);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
@@ -117,6 +303,7 @@ export default function App() {
           id: crypto.randomUUID(),
           role: "bot",
           text: data.response || "I could not find a reply for that.",
+          payload: data.payload,
           time: now(),
         },
       ]);
@@ -205,7 +392,7 @@ export default function App() {
 
           <div className="conversation">
             {messages.map((message) => (
-              <Message key={message.id} msg={message} />
+              <Message key={message.id} msg={message} onAction={sendMessage} />
             ))}
             {loading && <TypingIndicator />}
             <div ref={bottomRef} />

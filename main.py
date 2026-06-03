@@ -9,9 +9,40 @@ import uuid
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+
+# ------------------------------------------
+# 🔌 WebSocket Connection Manager
+# ------------------------------------------
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[str, list[WebSocket]] = {}
+
+    async def connect(self, session_id: str, websocket: WebSocket):
+        await websocket.accept()
+        if session_id not in self.active_connections:
+            self.active_connections[session_id] = []
+        self.active_connections[session_id].append(websocket)
+        logger.info("WebSocket connected for session: %s", session_id)
+
+    def disconnect(self, session_id: str, websocket: WebSocket):
+        if session_id in self.active_connections:
+            self.active_connections[session_id].remove(websocket)
+            if not self.active_connections[session_id]:
+                del self.active_connections[session_id]
+        logger.info("WebSocket disconnected for session: %s", session_id)
+
+    async def broadcast_to_session(self, session_id: str, message: dict):
+        if session_id in self.active_connections:
+            for connection in self.active_connections[session_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    pass
+
+manager = ConnectionManager()
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import service_account
 from pydantic import BaseModel
@@ -55,6 +86,16 @@ app.add_middleware(
 )
 
 
+@app.websocket("/ws/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    await manager.connect(session_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(session_id, websocket)
+
+
 # ------------------------------------------
 # 🔐 Dialogflow Auth
 # ------------------------------------------
@@ -79,8 +120,8 @@ class ChatRequest(BaseModel):
     session_id: str = None
 
 
-def _reply(text: str, session_id: str) -> JSONResponse:
-    return JSONResponse({"response": text, "session_id": session_id})
+def _reply(text: str, session_id: str, payload: dict = None) -> JSONResponse:
+    return JSONResponse({"response": text, "session_id": session_id, "payload": payload})
 
 
 def _known_food_terms() -> set[str]:
@@ -143,49 +184,49 @@ def _parse_order_items(text: str) -> tuple[list[str], list[int]]:
             quantities.append(1)
     return food_items, quantities
 
-def _local_chat_response(message: str, session_id: str) -> str:
+def _local_chat_response(message: str, session_id: str) -> dict:
     text = message.strip().lower()
 
     if not text:
-        return "Tell me what you'd like to eat, or ask to see the menu."
+        return {"fulfillmentText": "Tell me what you'd like to eat, or ask to see the menu."}
 
     if any(re.search(rf"\b{word}\b", text) for word in ("hello", "hi", "hey")):
-        return "Hey there! I can show the menu, take your order, or track an order."
+        return {"fulfillmentText": "Hey there! I can show the menu, take your order, or track an order."}
 
     if "menu" in text:
-        return handle_show_menu()["fulfillmentText"]
+        return handle_show_menu()
 
     if "track" in text:
         match = re.search(r"\b\d+\b", text)
-        return handle_track_order({"order_id": match.group(0) if match else None})["fulfillmentText"]
+        return handle_track_order({"order_id": match.group(0) if match else None})
 
     if "cancel" in text:
         match = re.search(r"\b\d+\b", text)
-        return handle_cancel_order({"order_id": match.group(0) if match else None})["fulfillmentText"]
+        return handle_cancel_order({"order_id": match.group(0) if match else None})
 
     if "cart" in text or "summary" in text:
-        return handle_cart_summary(session_id)["fulfillmentText"]
+        return handle_cart_summary(session_id)
 
     if any(word in text for word in ("confirm", "place order", "complete order", "that's it", "that's all", "done", "finish", "checkout")):
-        return handle_order_complete(session_id)["fulfillmentText"]
+        return handle_order_complete(session_id)
     
     if any(word in text for word in ("no", "nope", "nothing", "nevermind", "never mind", "nah")):
-        return "Okay! Let me know if you need anything else."
+        return {"fulfillmentText": "Okay! Let me know if you need anything else."}
 
     if text in ("i want to order", "i want to place an order", "new order", "order", "i want", "i would like to order"):
-        return "Sure! Tell me what you'd like. Example: '2 burgers and 1 pizza'"
+        return {"fulfillmentText": "Sure! Tell me what you'd like. Example: '2 burgers and 1 pizza'"}
 
     food_items, quantities = _parse_order_items(text)
     if food_items:
         return handle_order_add(
             {"food_items": food_items, "number": quantities},
             session_id,
-        )["fulfillmentText"]
+        )
 
     if "order" in text:
-        return "Sure. Tell me the item and quantity, like '2 burgers and 1 pizza'."
+        return {"fulfillmentText": "Sure. Tell me the item and quantity, like '2 burgers and 1 pizza'."}
 
-    return "I can help with the menu, orders, tracking, and cancellations. What would you like to do?"
+    return {"fulfillmentText": "I can help with the menu, orders, tracking, and cancellations. What would you like to do?"}
 
 
 @app.post("/chat")
@@ -216,7 +257,8 @@ async def chat(req: ChatRequest):
         result = response.json()
     except Exception:
         logger.exception("Dialogflow call failed; using local fallback")
-        return _reply(_local_chat_response(req.message, session_id), session_id)
+        res_dict = _local_chat_response(req.message, session_id)
+        return _reply(res_dict["fulfillmentText"], session_id, res_dict.get("payload"))
 
     query_result = result.get("queryResult", {})
     intent_name = query_result.get("intent", {}).get("displayName", "").strip().lower()
@@ -224,43 +266,65 @@ async def chat(req: ChatRequest):
 
     logger.info("Chat intent: %s | session: %s", intent_name, session_id)
 
+    reply = ""
+    payload = None
+
     # Route to handlers based on intent
     if intent_name == "order_add":
-        reply = handle_order_add(parameters, session_id)["fulfillmentText"]
+        res_dict = handle_order_add(parameters, session_id)
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     elif "order.remove" in intent_name:
-        reply = handle_order_remove(parameters, session_id)["fulfillmentText"]
+        res_dict = handle_order_remove(parameters, session_id)
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     elif intent_name == "cart.summary":
-        reply = handle_cart_summary(session_id)["fulfillmentText"]
+        res_dict = handle_cart_summary(session_id)
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     elif intent_name.startswith("order.complete"):
-        reply = handle_order_complete(session_id)["fulfillmentText"]
+        res_dict = handle_order_complete(session_id)
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     elif intent_name.startswith("track.order") or intent_name == "track order":
-        reply = handle_track_order(parameters)["fulfillmentText"]
+        res_dict = handle_track_order(parameters)
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     elif intent_name in ("show.menu", "menu"):
-        reply = handle_show_menu()["fulfillmentText"]
+        res_dict = handle_show_menu()
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     elif intent_name == "order.cancel":
-        reply = handle_cancel_order(parameters)["fulfillmentText"]
+        res_dict = handle_cancel_order(parameters)
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     elif intent_name in ("new order", "default welcome intent"):
         reply = query_result.get("fulfillmentText", "Welcome! Say 'show menu' to get started.")
+        payload = query_result.get("webhookPayload", None)
 
     elif _is_dialogflow_fallback(intent_name):
-        reply = _local_chat_response(req.message, session_id)
+        res_dict = _local_chat_response(req.message, session_id)
+        reply = res_dict["fulfillmentText"]
+        payload = res_dict.get("payload")
 
     else:
-        
         cart = get_or_create_cart(session_id)
         if cart and intent_name == "default fallback intent":
-           reply = handle_order_complete(session_id)["fulfillmentText"]
+           res_dict = handle_order_complete(session_id)
+           reply = res_dict["fulfillmentText"]
+           payload = res_dict.get("payload")
         else:
-          reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
+           reply = query_result.get("fulfillmentText") or "I didn't understand that. Try 'show menu' or '2 burgers'."
+           payload = query_result.get("webhookPayload", None)
 
-    return _reply(reply, session_id)
+    return _reply(reply, session_id, payload)
     
 @app.get("/health")
 async def health_check():
@@ -281,6 +345,16 @@ async def payment_callback(
     """Razorpay redirects here after payment."""
     try:
         if razorpay_payment_link_status == "paid":
+            # Verify signature first
+            from payment_helper import verify_payment_signature
+            if not razorpay_payment_link_id or not razorpay_payment_id or not razorpay_signature:
+                logger.warning("Payment callback missing signature parameters")
+                return HTMLResponse(content="<h1>Invalid Payment Parameters</h1>", status_code=400)
+
+            if not verify_payment_signature(razorpay_payment_link_id, razorpay_payment_id, razorpay_signature):
+                logger.warning("Invalid payment signature detected for order: %s", razorpay_payment_link_reference_id)
+                return HTMLResponse(content="<h1>Payment Verification Failed</h1>", status_code=403)
+
             # Extract order_id from reference
             order_id = razorpay_payment_link_reference_id
 
@@ -296,6 +370,25 @@ async def payment_callback(
             conn.close()
 
             logger.info("Payment confirmed for order #%s", order_id)
+
+            # Broadcast update via WebSocket
+            try:
+                from session_manager import get_redis
+                r = get_redis()
+                session_id = r.get(f"order_session:{order_id}")
+                if session_id:
+                    import asyncio
+                    asyncio.create_task(manager.broadcast_to_session(
+                        session_id,
+                        {
+                            "type": "order_status",
+                            "order_id": int(order_id),
+                            "status": "paid"
+                        }
+                    ))
+                    logger.info("Broadcasted payment confirmation to session: %s", session_id)
+            except Exception:
+                logger.exception("Failed to broadcast payment confirmation")
 
             return HTMLResponse(content="""
                 <html>

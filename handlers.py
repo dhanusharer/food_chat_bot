@@ -50,7 +50,15 @@ def handle_order_add(parameters: dict, session_id: str) -> dict:
     save_cart(session_id, cart)
     logger.info("Cart updated for %s: %s", session_id, cart)
 
-    return _fulfillment(f"Added {', '.join(added)} to your cart. Anything else?")
+    cart_summary = handle_cart_summary(session_id)
+    return {
+        "fulfillmentText": f"Added {', '.join(added)} to your cart. Anything else?",
+        "payload": {
+            "type": "cart_update",
+            "added": added,
+            "cart": cart_summary.get("payload")
+        }
+    }
 
 
 # ------------------------------------------
@@ -82,7 +90,15 @@ def handle_order_remove(parameters: dict, session_id: str) -> dict:
     if not_found:
         parts.append(f"Couldn't find {', '.join(not_found)} in your cart.")
 
-    return _fulfillment(" ".join(parts) + " Anything else?")
+    cart_summary = handle_cart_summary(session_id)
+    return {
+        "fulfillmentText": " ".join(parts) + " Anything else?",
+        "payload": {
+            "type": "cart_update",
+            "removed": removed,
+            "cart": cart_summary.get("payload")
+        }
+    }
 
 
 # ------------------------------------------
@@ -92,10 +108,53 @@ def handle_cart_summary(session_id: str) -> dict:
     cart = get_or_create_cart(session_id)
 
     if not cart:
-        return _fulfillment("Your cart is empty.")
+        return {
+            "fulfillmentText": "Your cart is empty.",
+            "payload": {
+                "type": "cart",
+                "items": [],
+                "total": 0.0
+            }
+        }
 
-    lines = [f"• {int(qty)}x {item}" for item, qty in cart.items()]
-    return _fulfillment("Here's your cart:\n" + "\n".join(lines) + "\n\nSay 'confirm order' to place it.")
+    # Resolve prices
+    conn = None
+    cursor = None
+    items_with_price = []
+    db_items = {}
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True, buffered=True)
+        cursor.execute("SELECT name, price FROM food_items")
+        db_items = {row["name"].lower(): float(row["price"]) for row in cursor.fetchall()}
+        
+        for item, qty in cart.items():
+            price = db_items.get(item.lower(), 0.0)
+            items_with_price.append({
+                "name": item,
+                "quantity": int(qty),
+                "price": price,
+                "total": price * qty
+            })
+    except Exception:
+        logger.exception("Failed to resolve cart item prices")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    lines = [f"• {int(qty)}x {item.title()} — ₹{(qty * db_items.get(item.lower(), 0.0)):.2f}" for item, qty in cart.items()]
+    total_cart_price = sum(item["total"] for item in items_with_price)
+    
+    return {
+        "fulfillmentText": "Here's your cart:\n" + "\n".join(lines) + f"\n\nTotal: ₹{total_cart_price:.2f}\n\nSay 'confirm order' to place it.",
+        "payload": {
+            "type": "cart",
+            "items": items_with_price,
+            "total": total_cart_price
+        }
+    }
 
 
 # ------------------------------------------
@@ -139,16 +198,24 @@ def handle_order_complete(session_id: str) -> dict:
 
         conn.commit()
 
+        # Save order_id to session_id mapping in Redis for WebSocket tracking
+        try:
+            from session_manager import get_redis
+            r = get_redis()
+            r.setex(f"order_session:{order_id}", 3600, session_id)
+            logger.info("Saved order_session mapping: %d -> %s", order_id, session_id)
+        except Exception:
+            logger.exception("Failed to save order to session mapping in Redis")
+
         clear_cart(session_id)
 
         # Generate Razorpay payment link
         payment_result = handle_payment(order_id, session_id)
-        msg = payment_result["fulfillmentText"]
 
-        if skipped:
-            msg += f"\n(Could not find: {', '.join(skipped)})"
+        if skipped and "fulfillmentText" in payment_result:
+            payment_result["fulfillmentText"] += f"\n(Could not find: {', '.join(skipped)})"
 
-        return _fulfillment(msg)
+        return payment_result
 
     except Exception:
         logger.exception("Failed to complete order for session %s", session_id)
@@ -194,13 +261,22 @@ def handle_track_order(parameters: dict) -> dict:
 
     items = summary["items"]
     total = sum(i["total_price"] for i in items)
-    lines = [f"• {i['quantity']}x {i['name']} — ₹{i['total_price']}" for i in items]
+    lines = [f"• {i['quantity']}x {i['name'].title()} — ₹{i['total_price']:.2f}" for i in items]
 
-    return _fulfillment(
-        f"Order #{order_id} is {summary['status']}.\n"
-        + "\n".join(lines)
-        + f"\n\nTotal: ₹{total:.2f}"
-    )
+    return {
+        "fulfillmentText": (
+            f"Order #{order_id} is {summary['status']}.\n"
+            + "\n".join(lines)
+            + f"\n\nTotal: ₹{total:.2f}"
+        ),
+        "payload": {
+            "type": "track",
+            "order_id": order_id,
+            "status": summary["status"],
+            "items": [{"name": i["name"], "quantity": int(i["quantity"]), "price": float(i["total_price"] / i["quantity"])} for i in items],
+            "total": float(total)
+        }
+    }
 
 
 # ------------------------------------------
@@ -219,7 +295,13 @@ def handle_show_menu() -> dict:
             return _fulfillment("Menu is not available right now.")
 
         lines = [f"• {item['name'].title()} — ₹{item['price']}" for item in items]
-        return _fulfillment("🍽️ Here's our menu:\n" + "\n".join(lines) + "\n\nWhat would you like to order?")
+        return {
+            "fulfillmentText": "🍽️ Here's our menu:\n" + "\n".join(lines) + "\n\nWhat would you like to order?",
+            "payload": {
+                "type": "menu",
+                "items": [{"name": item["name"], "price": float(item["price"])} for item in items]
+            }
+        }
 
     except Exception:
         logger.exception("Failed to fetch menu")
@@ -311,12 +393,20 @@ def handle_payment(order_id: int, session_id: str) -> dict:
             description=f"FoodieBot Order #{order_id}"
         )
 
-        return _fulfillment(
-            f"✅ Order #{order_id} placed!\n"
-            f"💰 Total: ₹{total:.2f}\n\n"
-            f"💳 Pay here 👉 {payment_url}\n"
-            f"⏰ Link expires in 15 minutes."
-        )
+        return {
+            "fulfillmentText": (
+                f"✅ Order #{order_id} placed!\n"
+                f"💰 Total: ₹{total:.2f}\n\n"
+                f"💳 Pay here 👉 {payment_url}\n"
+                f"⏰ Link expires in 15 minutes."
+            ),
+            "payload": {
+                "type": "receipt",
+                "order_id": order_id,
+                "total": total,
+                "payment_url": payment_url
+            }
+        }
 
     except Exception:
         logger.exception("Payment link generation failed for order #%s", order_id)

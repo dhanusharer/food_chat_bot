@@ -10,18 +10,46 @@ logger = logging.getLogger(__name__)
 
 CART_TTL = int(os.getenv("CART_TTL_SECONDS", 1800))
 
-_redis_client: redis.Redis | None = None
+class MockRedis:
+    def __init__(self):
+        self.store = {}
+
+    def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    def setex(self, key: str, time_val: int, value: str) -> None:
+        self.store[key] = value
+
+    def delete(self, key: str) -> None:
+        if key in self.store:
+            del self.store[key]
+
+_redis_client: redis.Redis | MockRedis | None = None
+_use_mock = False
 
 
-def get_redis() -> redis.Redis:
-    global _redis_client
+def get_redis() -> redis.Redis | MockRedis:
+    global _redis_client, _use_mock
+    if _use_mock:
+        return _redis_client
+
     if _redis_client is None:
-        _redis_client = redis.Redis(
-            host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", 6379)),
-            password=os.getenv("REDIS_PASSWORD", None),  # ← added
-            decode_responses=True,
-        )
+        try:
+            client = redis.Redis(
+                host=os.getenv("REDIS_HOST", "127.0.0.1"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                password=os.getenv("REDIS_PASSWORD", None),
+                decode_responses=True,
+                socket_connect_timeout=1,
+            )
+            client.ping()
+            _redis_client = client
+            logger.info("Successfully connected to Redis server.")
+        except Exception:
+            logger.warning("Local Redis connection failed. Falling back to in-memory MockRedis.")
+            _use_mock = True
+            _redis_client = MockRedis()
+
     return _redis_client
 
 
