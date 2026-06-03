@@ -582,6 +582,14 @@ button {
   .composer {
     grid-template-columns: minmax(0, 1fr) 74px;
   }
+
+  .chat-panel {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .suggestion-row {
+    display: none !important;
+  }
 }
 
 @media (max-width: 480px) {
