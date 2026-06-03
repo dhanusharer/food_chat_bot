@@ -3,7 +3,9 @@ import "./App.css";
 
 const PRODUCTION_API_URL = `${window.location.origin}/api`;
 const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-const API_URL = import.meta.env.VITE_API_URL || (isLocalHost ? "" : PRODUCTION_API_URL);
+const API_URL = isLocalHost 
+  ? (import.meta.env.VITE_API_URL || "") 
+  : `${window.location.origin}/api`;
 
 const QUICK_ACTIONS = [
   { label: "Show Menu", prompt: "Show menu", icon: "🍽️", hint: "Browse food and prices" },
