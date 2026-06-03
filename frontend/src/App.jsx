@@ -18,6 +18,28 @@ function now() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatMessage(text) {
+  // Split text into lines, then within each line, detect URLs and make them clickable
+  return text.split("\n").map((line, i) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = line.split(urlRegex);
+    return (
+      <span key={i}>
+        {i > 0 && <br />}
+        {parts.map((part, j) =>
+          urlRegex.test(part) ? (
+            <a key={j} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">
+              {part.includes("rzp.io") ? "💳 Click to Pay" : part}
+            </a>
+          ) : (
+            <span key={j}>{part}</span>
+          )
+        )}
+      </span>
+    );
+  });
+}
+
 function Message({ msg }) {
   const isBot = msg.role === "bot";
 
@@ -25,7 +47,7 @@ function Message({ msg }) {
     <article className={`message ${isBot ? "bot" : "user"}`}>
       {isBot && <div className="message-avatar" aria-hidden="true">🤖</div>}
       <div className="message-body">
-        <p>{msg.text}</p>
+        <p>{formatMessage(msg.text)}</p>
         <time>{msg.time}</time>
       </div>
     </article>

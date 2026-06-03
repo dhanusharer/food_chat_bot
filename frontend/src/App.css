@@ -345,6 +345,24 @@ button {
   white-space: pre-wrap;
 }
 
+.chat-link {
+  display: inline-block;
+  margin: 6px 0;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--coral), var(--coral-dark));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.chat-link:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 107, 61, 0.35);
+}
+
 .message-body time {
   display: block;
   margin-top: 6px;
