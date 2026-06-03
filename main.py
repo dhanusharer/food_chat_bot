@@ -267,6 +267,77 @@ async def health_check():
     return {"status": "ok", "version": "1.0.0"}
 
 
+from fastapi import Query
+from fastapi.responses import HTMLResponse
+
+
+@app.get("/payment/callback")
+async def payment_callback(
+    razorpay_payment_id: str = Query(None),
+    razorpay_payment_link_id: str = Query(None),
+    razorpay_payment_link_reference_id: str = Query(None),
+    razorpay_payment_link_status: str = Query(None),
+    razorpay_signature: str = Query(None),
+):
+    """Razorpay redirects here after payment."""
+    try:
+        if razorpay_payment_link_status == "paid":
+            # Extract order_id from reference
+            order_id = razorpay_payment_link_reference_id
+
+            # Update order status in DB
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE orders SET status = 'paid' WHERE id = %s",
+                (order_id,)
+            )
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            logger.info("Payment confirmed for order #%s", order_id)
+
+            return HTMLResponse(content="""
+                <html>
+                <head>
+                    <style>
+                        body { font-family: sans-serif; text-align: center;
+                               background: #0d0d0d; color: white; padding: 60px; }
+                        .emoji { font-size: 80px; }
+                        h1 { color: #f97316; }
+                        p { color: #888; }
+                    </style>
+                </head>
+                <body>
+                    <div class="emoji">🎉</div>
+                    <h1>Payment Successful!</h1>
+                    <p>Your order has been confirmed.</p>
+                    <p>Go back to <a href="https://gleaming-halva-bab9c6.netlify.app"
+                       style="color:#f97316">FoodieBot</a></p>
+                </body>
+                </html>
+            """)
+        else:
+            return HTMLResponse(content="""
+                <html>
+                <body style="font-family:sans-serif;text-align:center;
+                             background:#0d0d0d;color:white;padding:60px">
+                    <h1 style="color:red">Payment Failed</h1>
+                    <p>Please try again.</p>
+                </body>
+                </html>
+            """)
+
+    except Exception:
+        logger.exception("Payment callback error")
+        return HTMLResponse(content="<h1>Error processing payment</h1>")
+
+
+
+
+
+
 # ------------------------------------------
 # 🔗 Dialogflow Webhook
 # ------------------------------------------
