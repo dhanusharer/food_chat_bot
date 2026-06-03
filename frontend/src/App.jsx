@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
-const PRODUCTION_API_URL = "https://foodchatbot-production.up.railway.app";
+const PRODUCTION_API_URL = `${window.location.origin}/api`;
 const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const API_URL = import.meta.env.VITE_API_URL || (isLocalHost ? "" : PRODUCTION_API_URL);
 
@@ -320,9 +320,9 @@ export default function App() {
 
   useEffect(() => {
     const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    // Fallback URL: check if API_URL has custom origin or default to localhost
-    let wsHost = API_URL ? API_URL.replace(/^https?:\/\//, "") : "127.0.0.1:8000";
-    const wsUrl = `${wsProto}//${wsHost}/ws/${sessionId}`;
+    const wsUrl = isLocalHost
+      ? `${wsProto}//127.0.0.1:8000/ws/${sessionId}`
+      : `wss://foodchatbot-production.up.railway.app/ws/${sessionId}`;
 
     const socket = new WebSocket(wsUrl);
 
