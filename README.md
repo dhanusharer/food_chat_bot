@@ -60,8 +60,8 @@ To ensure local testing works seamlessly without requiring local Redis installat
 - **NLP Fallback Controller:** A local regex and fuzzy matching fallback parses and completes orders in the event of Dialogflow API quota limits or network dropouts.
 
 ### 🛒 End-to-End Commerce Lifecycle
-- **Unified Cart Additions:** Add multiple distinct items in a single sentence (e.g. `"2 fries and a veg burger"`).
-- **Interactive Cart UI:** Inline cards display item subtotals, catalog images, and decrement buttons.
+- **Local Selection Modifiers:** Adjust item quantities locally (`[- X +]`) directly on menu cards before committing them to the cart with a single click.
+- **Interactive Cart UI:** Inline cards display item details, calculated totals, and full quantity adjustment buttons (`[＋]`/`[－]`) along with quick trash bin actions (`🗑️`).
 - **Visual Invoices:** The checkout handler replaces generic text URLs with a styled receipt card pointing directly to the secure payment link.
 - **Live Stepper Tracker:** An animated progress bar tracks `Placed` ➔ `Paid` ➔ `Preparing` ➔ `Delivered` in real-time.
 
@@ -91,6 +91,8 @@ food_chat_bot/
 ├── session_manager.py   # Redis cart cache coordinator with MockRedis in-memory fallback
 ├── payment_helper.py    # Razorpay SDK wrappers and HMAC-SHA256 signature verification
 ├── init.sql             # Relational schema setup and seed catalog menu items
+├── architecture.png     # Default software architecture diagram
+├── banana_architecture.png # Cute banana-themed software architecture diagram
 ├── Dockerfile           # Multi-stage production container configuration
 ├── docker-compose.yml   # Multi-service local environment configuration (FastAPI, Redis, MySQL)
 ├── requirements.txt     # Python dependencies
