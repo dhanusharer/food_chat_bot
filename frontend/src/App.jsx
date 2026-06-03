@@ -609,6 +609,8 @@ export default function App() {
           <form className="composer" onSubmit={submitMessage}>
             <input
               ref={inputRef}
+              id="composer-input"
+              name="message"
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder="Try: 1 pizza, show menu, track order 9..."
