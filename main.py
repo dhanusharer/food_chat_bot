@@ -9,14 +9,14 @@ import uuid
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import service_account
 from pydantic import BaseModel
 
-from db_helper import get_food_item_names
+from db_helper import get_connection, get_food_item_names
 from handlers import (
     handle_cancel_order,
     handle_cart_summary,
@@ -267,8 +267,7 @@ async def health_check():
     return {"status": "ok", "version": "1.0.0"}
 
 
-from fastapi import Query
-from fastapi.responses import HTMLResponse
+
 
 
 @app.get("/payment/callback")

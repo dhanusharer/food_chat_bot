@@ -27,6 +27,7 @@ def create_payment_link(order_id: int, amount_paise: int, description: str) -> s
     payment_link = client.payment_link.create({
         "amount": amount_paise,
         "currency": "INR",
+        "reference_id": str(order_id),
         "description": description,
         "reminder_enable": False,
         "notify": {

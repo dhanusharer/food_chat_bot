@@ -22,12 +22,13 @@ function formatMessage(text) {
   // Split text into lines, then within each line, detect URLs and make them clickable
   return text.split("\n").map((line, i) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const isUrl = /^https?:\/\/[^\s]+$/;
     const parts = line.split(urlRegex);
     return (
       <span key={i}>
         {i > 0 && <br />}
         {parts.map((part, j) =>
-          urlRegex.test(part) ? (
+          isUrl.test(part) ? (
             <a key={j} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">
               {part.includes("rzp.io") ? "💳 Click to Pay" : part}
             </a>

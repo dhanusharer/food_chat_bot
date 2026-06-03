@@ -107,12 +107,15 @@ def handle_order_complete(session_id: str) -> dict:
     if not cart:
         return _fulfillment("Your cart is empty. Add some items first!")
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
 
-        order_id = create_new_order(cursor)
+        # Resolve items FIRST before creating the order
         skipped = []
+        resolved_items = []
 
         for item, qty in cart.items():
             food_id = get_food_item_id_fuzzy(cursor, item)
@@ -122,24 +125,39 @@ def handle_order_complete(session_id: str) -> dict:
                 skipped.append(item)
                 continue
 
-            insert_order_item(cursor, order_id, food_id, int(qty))
+            resolved_items.append((food_id, int(qty)))
+
+        if not resolved_items:
+            return _fulfillment(
+                "I couldn't match anything in your cart to the menu. Please check the menu and try again."
+            )
+
+        # Only create order if we have valid items
+        order_id = create_new_order(cursor)
+        for food_id, qty in resolved_items:
+            insert_order_item(cursor, order_id, food_id, qty)
 
         conn.commit()
-        cursor.close()
-        conn.close()
 
         clear_cart(session_id)
 
-        msg = f"✅ Order #{order_id} placed successfully!"
+        # Generate Razorpay payment link
+        payment_result = handle_payment(order_id, session_id)
+        msg = payment_result["fulfillmentText"]
+
         if skipped:
-            msg += f" (Could not find: {', '.join(skipped)})"
-        msg += f" Track it by saying 'track order {order_id}'."
+            msg += f"\n(Could not find: {', '.join(skipped)})"
 
         return _fulfillment(msg)
 
     except Exception:
         logger.exception("Failed to complete order for session %s", session_id)
         return _fulfillment("Something went wrong placing your order. Please try again.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 # ------------------------------------------
@@ -156,15 +174,20 @@ def handle_track_order(parameters: dict) -> dict:
     except (ValueError, TypeError):
         return _fulfillment("That doesn't look like a valid order ID.")
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
         summary = get_order_summary(cursor, order_id)
-        cursor.close()
-        conn.close()
     except Exception:
         logger.exception("Failed to fetch order %s", order_id)
         return _fulfillment("Couldn't fetch your order right now. Try again shortly.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     if not summary:
         return _fulfillment(f"Order #{order_id} not found.")
@@ -184,13 +207,13 @@ def handle_track_order(parameters: dict) -> dict:
 # 🍽️ SHOW MENU
 # ------------------------------------------
 def handle_show_menu() -> dict:
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
         cursor.execute("SELECT name, price FROM food_items ORDER BY name")
         items = cursor.fetchall()
-        cursor.close()
-        conn.close()
 
         if not items:
             return _fulfillment("Menu is not available right now.")
@@ -201,6 +224,11 @@ def handle_show_menu() -> dict:
     except Exception:
         logger.exception("Failed to fetch menu")
         return _fulfillment("Couldn't load the menu right now. Try again shortly.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 # ------------------------------------------
@@ -217,6 +245,8 @@ def handle_cancel_order(parameters: dict) -> dict:
     except (ValueError, TypeError):
         return _fulfillment("That doesn't look like a valid order ID.")
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
@@ -225,13 +255,9 @@ def handle_cancel_order(parameters: dict) -> dict:
         order = cursor.fetchone()
 
         if not order:
-            cursor.close()
-            conn.close()
             return _fulfillment(f"Order #{order_id} not found.")
 
         if order["status"] != "pending":
-            cursor.close()
-            conn.close()
             return _fulfillment(
                 f"Order #{order_id} is already {order['status']} and cannot be cancelled."
             )
@@ -240,8 +266,6 @@ def handle_cancel_order(parameters: dict) -> dict:
             "UPDATE orders SET status = 'cancelled' WHERE id = %s", (order_id,)
         )
         conn.commit()
-        cursor.close()
-        conn.close()
 
         logger.info("Order #%s cancelled", order_id)
         return _fulfillment(f"❌ Order #{order_id} has been cancelled successfully.")
@@ -249,6 +273,11 @@ def handle_cancel_order(parameters: dict) -> dict:
     except Exception:
         logger.exception("Failed to cancel order %s", order_id)
         return _fulfillment("Something went wrong. Please try again.")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 # ------------------------------------------
@@ -257,6 +286,8 @@ def handle_cancel_order(parameters: dict) -> dict:
 def handle_payment(order_id: int, session_id: str) -> dict:
     from payment_helper import create_payment_link
 
+    conn = None
+    cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor(dictionary=True, buffered=True)
@@ -267,8 +298,6 @@ def handle_payment(order_id: int, session_id: str) -> dict:
             (order_id,)
         )
         result = cursor.fetchone()
-        cursor.close()
-        conn.close()
 
         if not result or not result["total"]:
             return _fulfillment(f"✅ Order #{order_id} placed! Pay at delivery.")
@@ -295,3 +324,8 @@ def handle_payment(order_id: int, session_id: str) -> dict:
             f"✅ Order #{order_id} placed successfully! "
             f"Track it by saying 'track order {order_id}'."
         )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
