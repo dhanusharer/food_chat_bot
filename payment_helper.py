@@ -39,7 +39,7 @@ def create_payment_link(order_id: int, amount_paise: int, description: str) -> s
         },
         "callback_url": f"{os.getenv('APP_URL', 'https://foodchatbot-production.up.railway.app')}/payment/callback",
         "callback_method": "get",
-        "expire_by": int(__import__('time').time()) + 900  # 15 min expiry
+        "expire_by": int(__import__('time').time()) + 1200  # 20 min expiry
     })
 
     logger.info("Payment link created for order #%s: %s", order_id, payment_link["short_url"])
