@@ -55,6 +55,59 @@ function getEmojiForFood(name) {
   return "🍽️";
 }
 
+function MenuCard({ item, onAction }) {
+  const [localQty, setLocalQty] = useState(1);
+
+  const handleDecrement = () => {
+    setLocalQty((prev) => Math.max(1, prev - 1));
+  };
+
+  const handleIncrement = () => {
+    setLocalQty((prev) => prev + 1);
+  };
+
+  return (
+    <div className="menu-card">
+      <div className="menu-card-emoji" aria-hidden="true">
+        {getEmojiForFood(item.name)}
+      </div>
+      <div className="menu-card-info">
+        <h3>{item.name.replace(/\b\w/g, c => c.toUpperCase())}</h3>
+        <span className="price">₹{item.price.toFixed(2)}</span>
+      </div>
+      <div className="menu-card-actions">
+        <div className="local-qty-selector">
+          <button 
+            type="button" 
+            className="qty-btn qty-minus" 
+            onClick={handleDecrement}
+          >
+            −
+          </button>
+          <span className="qty-val">{localQty}</span>
+          <button 
+            type="button" 
+            className="qty-btn qty-plus" 
+            onClick={handleIncrement}
+          >
+            ＋
+          </button>
+        </div>
+        <button 
+          type="button" 
+          className="add-to-cart-btn" 
+          onClick={() => {
+            onAction(`${localQty} ${item.name}`);
+            setLocalQty(1);
+          }}
+        >
+          🛒 CART
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RichPayload({ payload, cart = {}, onAction }) {
   if (!payload || !payload.type) return null;
 
@@ -62,76 +115,65 @@ function RichPayload({ payload, cart = {}, onAction }) {
     case "menu":
       return (
         <div className="menu-grid">
-          {payload.items && payload.items.map((item, idx) => {
-            const qty = cart[item.name.toLowerCase()] || 0;
-            return (
-              <div key={idx} className="menu-card">
-                <div className="menu-card-emoji" aria-hidden="true">
-                  {getEmojiForFood(item.name)}
-                </div>
-                <div className="menu-card-info">
-                  <h3>{item.name.replace(/\b\w/g, c => c.toUpperCase())}</h3>
-                  <span className="price">₹{item.price.toFixed(2)}</span>
-                </div>
-                {qty > 0 ? (
-                  <div className="qty-selector">
-                    <button 
-                      type="button" 
-                      className="qty-btn qty-minus" 
-                      onClick={() => onAction(`remove 1 ${item.name}`)}
-                    >
-                      −
-                    </button>
-                    <span className="qty-val">{qty}</span>
-                    <button 
-                      type="button" 
-                      className="qty-btn qty-plus" 
-                      onClick={() => onAction(`1 ${item.name}`)}
-                    >
-                      ＋
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    type="button" 
-                    className="add-btn" 
-                    onClick={() => onAction(`1 ${item.name}`)}
-                  >
-                    ＋ Add
-                  </button>
-                )}
-              </div>
-            );
-          })}
+          {payload.items && payload.items.map((item, idx) => (
+            <MenuCard key={idx} item={item} onAction={onAction} />
+          ))}
         </div>
       );
 
     case "cart":
     case "cart_update": {
-      const cart = payload.type === "cart_update" ? payload.cart : payload;
-      if (!cart || !cart.items || cart.items.length === 0) {
+      const cartObj = payload.type === "cart_update" ? payload.cart : payload;
+      if (!cartObj || !cartObj.items || cartObj.items.length === 0) {
         return <div className="cart-card">Your cart is empty.</div>;
       }
       return (
         <div className="cart-card">
-          {cart.items.map((item, idx) => (
+          {cartObj.items.map((item, idx) => (
             <div key={idx} className="cart-item-row">
               <div className="cart-item-info">
                 <strong>{item.name.replace(/\b\w/g, c => c.toUpperCase())}</strong>
-                <span>Qty: {item.quantity} × ₹{item.price.toFixed(2)}</span>
+                <span className="cart-item-qty-detail">Qty: {item.quantity} × ₹{item.price.toFixed(2)}</span>
+                <span className="cart-item-total">Total: ₹{(item.quantity * item.price).toFixed(2)}</span>
               </div>
-              <button 
-                type="button" 
-                className="remove-btn" 
-                onClick={() => onAction(`remove ${item.name}`)}
-              >
-                Remove
-              </button>
+              <div className="cart-qty-control">
+                <div className="cart-qty-selector">
+                  <button 
+                    type="button" 
+                    className="cart-qty-btn cart-qty-minus" 
+                    onClick={() => {
+                      if (item.quantity > 1) {
+                        onAction(`remove 1 ${item.name}`);
+                      } else {
+                        onAction(`remove ${item.name}`);
+                      }
+                    }}
+                  >
+                    −
+                  </button>
+                  <span className="cart-qty-val">{item.quantity}</span>
+                  <button 
+                    type="button" 
+                    className="cart-qty-btn cart-qty-plus" 
+                    onClick={() => onAction(`1 ${item.name}`)}
+                  >
+                    ＋
+                  </button>
+                </div>
+                <button 
+                  type="button" 
+                  className="cart-remove-icon-btn" 
+                  onClick={() => onAction(`remove ${item.name}`)}
+                  title="Remove item"
+                >
+                  🗑️
+                </button>
+              </div>
             </div>
           ))}
           <div className="cart-total-row">
             <span>Total:</span>
-            <strong>₹{cart.total.toFixed(2)}</strong>
+            <strong>₹{cartObj.total.toFixed(2)}</strong>
           </div>
           <div className="cart-actions">
             <button 
