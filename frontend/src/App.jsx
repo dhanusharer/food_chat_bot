@@ -531,25 +531,27 @@ export default function App() {
 
         <section className="chat-panel" aria-label="Chat with FoodieBot">
           <div className="chat-panel-header">
-            <div>
-              <span className="eyebrow">Live Chat</span>
-              <h2>What are we ordering?</h2>
+            <div className="chat-panel-header-top">
+              <div>
+                <span className="eyebrow">Live Chat</span>
+                <h2>What are we ordering?</h2>
+              </div>
+              <span className="session-chip">#{shortSession}</span>
             </div>
-            <span className="session-chip">#{shortSession}</span>
-          </div>
 
-          <div className="mobile-actions-row" aria-label="Quick Actions">
-            {QUICK_ACTIONS.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => sendMessage(action.prompt)}
-                disabled={loading}
-              >
-                <span className="mobile-action-icon">{action.icon}</span>
-                {action.label}
-              </button>
-            ))}
+            <div className="mobile-actions-row" aria-label="Quick Actions">
+              {QUICK_ACTIONS.map((action) => (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={() => sendMessage(action.prompt)}
+                  disabled={loading}
+                >
+                  <span className="mobile-action-icon">{action.icon}</span>
+                  {action.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="suggestion-row" aria-label="Example messages">

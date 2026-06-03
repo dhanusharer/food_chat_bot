@@ -227,12 +227,19 @@ button {
 
 .chat-panel-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   padding: 20px 22px;
   border-bottom: 1px solid var(--line);
   background: var(--card);
+}
+
+.chat-panel-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
 }
 
 .chat-panel-header h2 {
@@ -1366,10 +1373,9 @@ button {
   .mobile-actions-row {
     display: flex;
     gap: 8px;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--line);
+    padding: 10px 0 0 0;
+    border-top: 1px dashed var(--line);
     overflow-x: auto;
-    background: #fbfdff;
     scrollbar-width: none;
   }
 
