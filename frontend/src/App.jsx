@@ -374,6 +374,23 @@ export default function App() {
     setInput("");
     setLoading(true);
 
+    // Detect HTTPS Mixed Content block issue
+    const isHttps = window.location.protocol === "https:";
+    const isApiHttp = API_URL && API_URL.startsWith("http://");
+    if (isHttps && isApiHttp) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          role: "bot",
+          text: `⚠️ Connection Blocked (Mixed Content):\nThe frontend is hosted on secure HTTPS (${window.location.hostname}), but the configured backend URL is insecure HTTP (${API_URL}).\n\nBrowsers block secure pages from making HTTP requests to prevent security risks. Please use a secure HTTPS backend URL, or run the frontend locally over HTTP.`,
+          time: now(),
+        },
+      ]);
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
@@ -382,7 +399,14 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error("Request failed");
+        let errorDetails = `HTTP ${response.status} ${response.statusText}`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.detail) {
+            errorDetails = errData.detail;
+          }
+        } catch {}
+        throw new Error(errorDetails);
       }
 
       const data = await response.json();
@@ -397,13 +421,20 @@ export default function App() {
         },
       ]);
       updateCartState(data.payload);
-    } catch {
+    } catch (err) {
+      console.error("Chat communication error:", err);
+      
+      const isTypeError = err instanceof TypeError;
+      const errorText = isTypeError
+        ? `🔌 Connection Error:\nCould not connect to the backend server at "${API_URL || window.location.origin}".\n\nPlease verify that the backend server is running and accessible, and that CORS is enabled.`
+        : `⚠️ Server Error:\n${err.message || "An unexpected error occurred."}`;
+
       setMessages((current) => [
         ...current,
         {
           id: crypto.randomUUID(),
           role: "bot",
-          text: "I could not reach the server. Check the backend URL and try again.",
+          text: errorText,
           time: now(),
         },
       ]);
