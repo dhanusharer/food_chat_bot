@@ -290,6 +290,7 @@ export default function App() {
   const [cart, setCart] = useState({});
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [sessionId] = useState(() => crypto.randomUUID());
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
@@ -420,11 +421,23 @@ export default function App() {
   return (
     <main className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">🍔</span>
-          <div>
-            <h1>FoodieBot</h1>
-            <p>Fast food ordering assistant</p>
+        <div className="brand-container">
+          <button 
+            type="button" 
+            className="menu-toggle-btn" 
+            onClick={() => setIsDrawerOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            <span className="hamburger-line" />
+            <span className="hamburger-line" />
+            <span className="hamburger-line" />
+          </button>
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true">🍔</span>
+            <div>
+              <h1>FoodieBot</h1>
+              <p>Fast food ordering assistant</p>
+            </div>
           </div>
         </div>
         <div className="connection">
@@ -432,6 +445,65 @@ export default function App() {
           Online
         </div>
       </header>
+
+      {/* Mobile Drawer Overlay */}
+      {isDrawerOpen && (
+        <div 
+          className="drawer-overlay" 
+          onClick={() => setIsDrawerOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile Drawer Sidebar */}
+      <div className={`drawer-sidebar ${isDrawerOpen ? "open" : ""}`}>
+        <div className="drawer-header">
+          <h2>Menu & Actions</h2>
+          <button 
+            type="button" 
+            className="drawer-close-btn" 
+            onClick={() => setIsDrawerOpen(false)}
+            aria-label="Close navigation menu"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="drawer-body">
+          <div className="drawer-section">
+            <span className="eyebrow">Quick Actions</span>
+            <div className="drawer-quick-actions">
+              {QUICK_ACTIONS.map((action) => (
+                <button
+                  key={action.label}
+                  className="action-card"
+                  type="button"
+                  onClick={() => {
+                    sendMessage(action.prompt);
+                    setIsDrawerOpen(false);
+                  }}
+                  disabled={loading}
+                >
+                  <span className="action-icon" aria-hidden="true">{action.icon}</span>
+                  <span>
+                    <strong>{action.label}</strong>
+                    <small>{action.hint}</small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="drawer-section">
+            <span className="eyebrow">Ordering Flow</span>
+            <ol className="drawer-flow-list">
+              <li>Open the menu</li>
+              <li>Add items with quantity</li>
+              <li>Check your cart</li>
+              <li>Confirm the order</li>
+            </ol>
+          </div>
+        </div>
+      </div>
 
       <section className="workspace">
         <aside className="action-panel" aria-label="Quick actions">
@@ -464,6 +536,20 @@ export default function App() {
               <h2>What are we ordering?</h2>
             </div>
             <span className="session-chip">#{shortSession}</span>
+          </div>
+
+          <div className="mobile-actions-row" aria-label="Quick Actions">
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => sendMessage(action.prompt)}
+                disabled={loading}
+              >
+                <span className="mobile-action-icon">{action.icon}</span>
+                {action.label}
+              </button>
+            ))}
           </div>
 
           <div className="suggestion-row" aria-label="Example messages">
