@@ -17,6 +17,7 @@
 
 ![FoodieBot Architecture](architecture.png)
 
+
 </div>
 
 ---
