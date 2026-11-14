@@ -199,6 +199,7 @@ If you already have a local MySQL server running, you can launch natively withou
 
 ---
 
+
 ## 🔧 Configurable Environment Variables
 
 Create a local `.env` file in the root directory:
