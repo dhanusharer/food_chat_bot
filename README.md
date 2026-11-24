@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🍔 FoodieBot — Asynchronous Conversational Commerce Engine
+# 🍔 FoodieBot — Asynchronous Conversational Commerce Enginee
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Netlify-00C7B7?style=for-the-badge&logo=netlify&logoColor=white)](https://gleaming-halva-bab9c6.netlify.app)
 [![API](https://img.shields.io/badge/API-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white)](https://foodchatbot-production.up.railway.app/health)
